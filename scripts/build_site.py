@@ -49,6 +49,8 @@ def inline_md(text):
 
 def paragraphs_html(block):
     """空行区切りの本文をpタグ群に変換（### 小見出しがあればh3として扱う）"""
+    # 「### 見出し」行の前後に空行がなくても独立した段落として扱う
+    block = re.sub(r"[ \t]*\n(### [^\n]+)\n[ \t]*", r"\n\n\1\n\n", block)
     parts = [p.strip() for p in block.strip().split("\n\n") if p.strip()]
     out = []
     for p in parts:
@@ -155,7 +157,18 @@ def page(title, description, body_html, depth=0, og_image=None):
 # ==============================
 # ページ生成
 # ==============================
-def build_article_page(kanji, pattern_num_idx, pattern_meta, links):
+def has_image(kanji):
+    return os.path.exists(os.path.join(ASSETS_DIR, "images", f"uranai_{kanji}.png"))
+
+
+def kanji_title(kanji, meta):
+    """見出し用の名称。漢字は「愛」の書き方占い、Graphologyは 筆跡全体の書き方占い"""
+    if meta.get("category") == "graphology":
+        return f"{kanji}の書き方占い"
+    return f"「{kanji}」の書き方占い"
+
+
+def build_article_page(kanji, meta, pattern_num_idx, pattern_meta, links):
     num_label = pattern_meta["num"]
     num_clean = NUM_MAP.get(num_label, str(pattern_num_idx + 1))
     md_path = os.path.join(ARTICLES_DIR, f"note_{kanji}_{num_clean}.md")
@@ -166,19 +179,26 @@ def build_article_page(kanji, pattern_num_idx, pattern_meta, links):
         raw = f.read()
 
     sec = parse_article(raw)
-    title = f"「{kanji}」の書き方占い {num_label} {pattern_meta['part']}｜{SITE_NAME}"
+    ktitle = kanji_title(kanji, meta)
+    title = f"{ktitle} {num_label} {pattern_meta['part']}｜{SITE_NAME}"
     description = pattern_meta["core"]
 
     affiliate_html = sec["affiliate_cta"].replace("[AFFILIATE_LINK]", links["affiliate_link"])
     omikuji_html = sec["omikuji_cta"].replace("[OMIKUJI_LINK]", links["omikuji_link"])
 
+    hero_img = (
+        f'<img class="kanji-hero" src="../../assets/images/uranai_{html.escape(kanji)}.png" '
+        f'alt="{html.escape(kanji)}の書き方占いイメージ" loading="lazy">'
+        if has_image(kanji) else ""
+    )
+
     body = f"""
 <article class="kakikuse-article">
-  <nav class="breadcrumb"><a href="../../index.html">トップ</a> &gt; <a href="../index.html">{html.escape(kanji)}の書き方占い</a> &gt; {html.escape(num_label)}</nav>
-  <h1>「{html.escape(kanji)}」の書き方占い {html.escape(num_label)}<br>{html.escape(pattern_meta['part'])}</h1>
+  <nav class="breadcrumb"><a href="../../index.html">トップ</a> &gt; <a href="../index.html">{html.escape(ktitle)}</a> &gt; {html.escape(num_label)}</nav>
+  <h1>{html.escape(ktitle)} {html.escape(num_label)}<br>{html.escape(pattern_meta['part'])}</h1>
   <p class="lead">{html.escape(pattern_meta['type'])}／{html.escape(pattern_meta['core'])}</p>
 
-  <img class="kanji-hero" src="../../assets/images/uranai_{html.escape(kanji)}.png" alt="{html.escape(kanji)}の書き方占いイメージ" loading="lazy">
+  {hero_img}
 
   <section class="intro">{paragraphs_html(sec['intro'])}</section>
 
@@ -225,10 +245,13 @@ def build_article_page(kanji, pattern_num_idx, pattern_meta, links):
     return page(title, description, body, depth=2)
 
 
-def build_kanji_index(kanji, meta):
+def build_kanji_index(kanji, meta, available_patterns):
     theme = meta["theme"]
+    ktitle = kanji_title(kanji, meta)
     cards = []
     for idx, p in enumerate(meta["patterns"]):
+        if idx not in available_patterns:
+            continue
         num_clean = NUM_MAP.get(p["num"], str(idx + 1))
         cards.append(f"""
 <a class="pattern-card" href="{num_clean}/index.html">
@@ -237,28 +260,46 @@ def build_kanji_index(kanji, meta):
   <p>{html.escape(p['core'])}</p>
 </a>""")
 
+    hero_img = (
+        f'<img src="../assets/images/uranai_{html.escape(kanji)}.png" alt="{html.escape(kanji)}の書き方占い" class="kanji-hero">'
+        if has_image(kanji) else ""
+    )
+    if meta.get("category") == "graphology":
+        intro = (f"{html.escape(kanji)}の特徴には、代表的な{len(cards)}つのパターンがあります。"
+                 "欧米の筆跡診断（グラフォロジー）の視点から、気になるパターンを選んで詳しい診断を見てみましょう。")
+    else:
+        intro = (f"「{html.escape(kanji)}」という文字の書き方には、代表的な{len(cards)}つのクセがあります。"
+                 "気になるパターンを選んで、詳しい診断を見てみましょう。")
+
     body = f"""
-<nav class="breadcrumb"><a href="../index.html">トップ</a> &gt; {html.escape(kanji)}の書き方占い</nav>
+<nav class="breadcrumb"><a href="../index.html">トップ</a> &gt; {html.escape(ktitle)}</nav>
 <section class="kanji-hero-section">
-  <img src="../assets/images/uranai_{html.escape(kanji)}.png" alt="{html.escape(kanji)}の書き方占い" class="kanji-hero">
-  <h1>「{html.escape(kanji)}」の書き方占い</h1>
+  {hero_img}
+  <h1>{html.escape(ktitle)}</h1>
   <p class="lead">テーマ：{html.escape(theme)}</p>
-  <p>「{html.escape(kanji)}」という文字の書き方には、3つの代表的なクセがあります。気になるパターンを選んで、詳しい診断を見てみましょう。</p>
+  <p>{intro}</p>
 </section>
 <section class="pattern-grid">
   {''.join(cards)}
 </section>
 """
-    return page(f"「{kanji}」の書き方占い｜{SITE_NAME}", f"「{kanji}」の書き方でわかる{theme}診断。3つの書き方パターンから深層心理を読み解きます。", body, depth=1)
+    return page(f"{ktitle}｜{SITE_NAME}", f"{ktitle}でわかる{theme}診断。書き方パターンから深層心理を読み解きます。", body, depth=1)
 
 
-def build_home(kakikuse_data):
+def build_home(kakikuse_data, available):
     cards = []
     for kanji, meta in kakikuse_data.items():
+        if not available.get(kanji):
+            continue
+        if has_image(kanji):
+            visual = f'<img src="assets/images/uranai_{html.escape(kanji)}.png" alt="{html.escape(kanji)}の書き方占い" loading="lazy">'
+        else:
+            visual = '<div class="kanji-card-placeholder">✒</div>'
+        label = kanji if meta.get("category") != "graphology" else kanji
         cards.append(f"""
 <a class="kanji-card" href="{html.escape(kanji)}/index.html">
-  <img src="assets/images/uranai_{html.escape(kanji)}.png" alt="{html.escape(kanji)}の書き方占い" loading="lazy">
-  <h2>{html.escape(kanji)}</h2>
+  {visual}
+  <h2>{html.escape(label)}</h2>
   <p>{html.escape(meta['theme'])}</p>
 </a>""")
 
@@ -364,6 +405,13 @@ main {
 }
 .kanji-card:hover, .pattern-card:hover { border-color: var(--accent); }
 .kanji-card img { width: 100%; border-radius: 8px; margin-bottom: 0.5rem; }
+.kanji-card-placeholder {
+  aspect-ratio: 1 / 1;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 3rem; color: var(--accent);
+  background: linear-gradient(135deg, #2a1c47, #1a1230);
+  border-radius: 8px; margin-bottom: 0.5rem;
+}
 .kanji-card h2 { margin: 0.3rem 0; font-size: 1.4rem; }
 .pattern-card h3 { margin-top: 0; color: var(--accent); }
 .pattern-card .type { color: var(--text-muted); font-size: 0.9rem; }
@@ -455,9 +503,19 @@ def main():
     # .nojekyll（GitHub Pagesがアンダースコア始まりのファイルを無視しないように）
     open(os.path.join(OUT_DIR, ".nojekyll"), "w").close()
 
+    # 記事が存在するパターンだけをサイトに載せる（未生成分は自動的に非表示）
+    available = {}
+    for kanji, meta in kakikuse_data.items():
+        idxs = []
+        for idx, pattern in enumerate(meta["patterns"]):
+            num_clean = NUM_MAP.get(pattern["num"], str(idx + 1))
+            if os.path.exists(os.path.join(ARTICLES_DIR, f"note_{kanji}_{num_clean}.md")):
+                idxs.append(idx)
+        available[kanji] = idxs
+
     # トップページ
     with open(os.path.join(OUT_DIR, "index.html"), "w", encoding="utf-8") as f:
-        f.write(build_home(kakikuse_data))
+        f.write(build_home(kakikuse_data, available))
 
     about_body, privacy_body = build_static_pages()
     with open(os.path.join(OUT_DIR, "about.html"), "w", encoding="utf-8") as f:
@@ -468,26 +526,30 @@ def main():
     built = 0
     missing = []
     for kanji, meta in kakikuse_data.items():
+        if not available[kanji]:
+            missing.extend(f"note_{kanji}_{NUM_MAP.get(p['num'], str(i+1))}.md"
+                           for i, p in enumerate(meta["patterns"]))
+            continue
         kanji_dir = os.path.join(OUT_DIR, kanji)
         os.makedirs(kanji_dir, exist_ok=True)
         with open(os.path.join(kanji_dir, "index.html"), "w", encoding="utf-8") as f:
-            f.write(build_kanji_index(kanji, meta))
+            f.write(build_kanji_index(kanji, meta, available[kanji]))
 
         for idx, pattern in enumerate(meta["patterns"]):
             num_clean = NUM_MAP.get(pattern["num"], str(idx + 1))
-            pat_dir = os.path.join(kanji_dir, num_clean)
-            os.makedirs(pat_dir, exist_ok=True)
-            html_out = build_article_page(kanji, idx, pattern, links)
+            html_out = build_article_page(kanji, meta, idx, pattern, links)
             if html_out is None:
                 missing.append(f"note_{kanji}_{num_clean}.md")
                 continue
+            pat_dir = os.path.join(kanji_dir, num_clean)
+            os.makedirs(pat_dir, exist_ok=True)
             with open(os.path.join(pat_dir, "index.html"), "w", encoding="utf-8") as f:
                 f.write(html_out)
             built += 1
 
     print(f"ビルド完了: {built}ページ生成 → {OUT_DIR}")
     if missing:
-        print(f"警告: 記事が見つからずスキップしたファイル: {', '.join(missing)}")
+        print(f"未生成のためスキップ（{len(missing)}件）: {', '.join(missing)}")
 
 
 if __name__ == "__main__":
