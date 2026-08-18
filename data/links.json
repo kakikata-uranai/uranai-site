@@ -1,5 +1,19 @@
 {
-  "_readme": "ASPで発行されたアフィリエイトリンクをここに貼るだけでサイト全体に反映されます。site/README.md も参照してください。",
-  "affiliate_link": "https://kakikata-uranai.example.com/coming-soon",
-  "omikuji_link": "https://kakikata-uranai.example.com/coming-soon"
+  "_readme": "A8.netなどで発行した広告リンクの設定。url が空、または example.com のままのセクションはサイトに出力されません。",
+
+  "affiliate": {
+    "_note": "「もっと詳しく占いたい方へ」で使う本命リンク",
+    "advertiser": "ココナラ",
+    "url": "https://px.a8.net/svt/ejp?a8mat=4BA8P6+929L22+2PEO+C28PU",
+    "impression": "https://www16.a8.net/0.gif?a8mat=4BA8P6+929L22+2PEO+C28PU",
+    "button_label": "ココナラで占ってもらう"
+  },
+
+  "omikuji": {
+    "_note": "「今すぐおみくじを引く」で使う軽い入口。未設定の間はこのセクション自体を出力しない",
+    "advertiser": "",
+    "url": "",
+    "impression": "",
+    "button_label": "おみくじを引く"
+  }
 }

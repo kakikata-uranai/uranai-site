@@ -168,6 +168,39 @@ def kanji_title(kanji, meta):
     return f"「{kanji}」の書き方占い"
 
 
+def is_configured(entry):
+    """リンクが実際に設定されているか（未設定・プレースホルダは出力しない）"""
+    url = (entry or {}).get("url", "").strip()
+    return bool(url) and "example.com" not in url
+
+
+def ad_anchor(entry, label=None, cls="cta-button"):
+    """広告リンクのaタグ。rel は sponsored + nofollow、別タブで開く"""
+    text = label or entry.get("button_label") or entry.get("advertiser") or "詳しく見る"
+    return (f'<a class="{cls}" href="{html.escape(entry["url"], quote=True)}" '
+            f'rel="nofollow sponsored noopener" target="_blank">{html.escape(text)}</a>')
+
+
+def impression_tag(entry):
+    """A8の1×1インプレッション計測タグ（生成コードに含まれていた場合のみ）"""
+    src = (entry or {}).get("impression", "").strip()
+    if not src:
+        return ""
+    return (f'<img class="a8-impression" border="0" width="1" height="1" '
+            f'src="{html.escape(src, quote=True)}" alt="">')
+
+
+def inline_ad_link(text_html, token, entry):
+    """本文中の [AFFILIATE_LINK] 等を、生URLではなくリンク付きの語に置き換える"""
+    if not is_configured(entry):
+        # 未設定なら「こちらの [LINK] から」のような文が壊れないよう語だけ残す
+        return text_html.replace(token, "")
+    word = entry.get("advertiser") or "こちら"
+    anchor = (f'<a href="{html.escape(entry["url"], quote=True)}" '
+              f'rel="nofollow sponsored noopener" target="_blank">{html.escape(word)}</a>')
+    return text_html.replace(token, anchor)
+
+
 def build_article_page(kanji, meta, pattern_num_idx, pattern_meta, links):
     num_label = pattern_meta["num"]
     num_clean = NUM_MAP.get(num_label, str(pattern_num_idx + 1))
@@ -183,8 +216,14 @@ def build_article_page(kanji, meta, pattern_num_idx, pattern_meta, links):
     title = f"{ktitle} {num_label} {pattern_meta['part']}｜{SITE_NAME}"
     description = pattern_meta["core"]
 
-    affiliate_html = sec["affiliate_cta"].replace("[AFFILIATE_LINK]", links["affiliate_link"])
-    omikuji_html = sec["omikuji_cta"].replace("[OMIKUJI_LINK]", links["omikuji_link"])
+    affiliate = links.get("affiliate", {})
+    omikuji = links.get("omikuji", {})
+    has_aff = is_configured(affiliate)
+    has_omi = is_configured(omikuji)
+
+    # 本文はエスケープしてから、残ったトークンをリンクに差し替える
+    affiliate_html = inline_ad_link(paragraphs_html(sec["affiliate_cta"]), "[AFFILIATE_LINK]", affiliate)
+    omikuji_html = inline_ad_link(paragraphs_html(sec["omikuji_cta"]), "[OMIKUJI_LINK]", omikuji)
 
     hero_img = (
         f'<img class="kanji-hero" src="../../assets/images/uranai_{html.escape(kanji)}.png" '
@@ -192,9 +231,36 @@ def build_article_page(kanji, meta, pattern_num_idx, pattern_meta, links):
         if has_image(kanji) else ""
     )
 
+    # ステマ規制（景品表示法）対応：広告を含むページであることを冒頭で明示する
+    pr_notice = ('<p class="pr-notice">本ページはプロモーションを含みます</p>'
+                 if (has_aff or has_omi) else "")
+
+    mid_ad = f"""
+  <div class="ad-banner">
+    <p>気になる続きは、以下から本格鑑定もチェックしてみてください。</p>
+    {ad_anchor(affiliate)}
+  </div>""" if has_aff else ""
+
+    affiliate_section = f"""
+  <section class="cta-section">
+    <h2>もっと詳しく占いたい方へ</h2>
+    {affiliate_html}
+    {ad_anchor(affiliate)}
+  </section>
+""" if has_aff else ""
+
+    omikuji_section = f"""
+  <section class="cta-section">
+    <h2>今すぐおみくじを引く</h2>
+    {omikuji_html}
+    {ad_anchor(omikuji, cls="cta-button cta-secondary")}
+  </section>
+""" if has_omi else ""
+
     body = f"""
 <article class="kakikuse-article">
   <nav class="breadcrumb"><a href="../../index.html">トップ</a> &gt; <a href="../index.html">{html.escape(ktitle)}</a> &gt; {html.escape(num_label)}</nav>
+  {pr_notice}
   <h1>{html.escape(ktitle)} {html.escape(num_label)}<br>{html.escape(pattern_meta['part'])}</h1>
   <p class="lead">{html.escape(pattern_meta['type'])}／{html.escape(pattern_meta['core'])}</p>
 
@@ -206,11 +272,7 @@ def build_article_page(kanji, meta, pattern_num_idx, pattern_meta, links):
     <h2>今月の文字パーツ解説</h2>
     {paragraphs_html(sec['free_part'])}
   </section>
-
-  <div class="ad-banner">
-    <p>気になる続きは、以下から本格鑑定もチェックしてみてください。</p>
-    <a class="cta-button" href="{links['affiliate_link']}" rel="nofollow sponsored" target="_blank">詳しく占ってもらう</a>
-  </div>
+{mid_ad}
 
   <section class="personality">
     <h2>性格診断</h2>
@@ -229,18 +291,8 @@ def build_article_page(kanji, meta, pattern_num_idx, pattern_meta, links):
     {paragraphs_html(sec['compat'])}
   </section>
 
-  <section class="cta-section">
-    <h2>もっと詳しく占いたい方へ</h2>
-    {paragraphs_html(affiliate_html)}
-    <a class="cta-button" href="{links['affiliate_link']}" rel="nofollow sponsored" target="_blank">占いポータルを見る</a>
-  </section>
-
-  <section class="cta-section">
-    <h2>今すぐおみくじを引く</h2>
-    {paragraphs_html(omikuji_html)}
-    <a class="cta-button cta-secondary" href="{links['omikuji_link']}" rel="nofollow sponsored" target="_blank">おみくじを引く</a>
-  </section>
-</article>
+{affiliate_section}{omikuji_section}
+</article>{impression_tag(affiliate)}{impression_tag(omikuji)}
 """
     return page(title, description, body, depth=2)
 
@@ -417,6 +469,16 @@ main {
 .pattern-card .type { color: var(--text-muted); font-size: 0.9rem; }
 .about-blurb { margin-top: 3rem; border-top: 1px solid var(--border); padding-top: 1.5rem; }
 .breadcrumb { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem; }
+.pr-notice {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.35rem 0.7rem;
+  display: inline-block;
+  margin: 0 0 1rem;
+}
+.a8-impression { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .breadcrumb a { color: var(--text-muted); }
 .kanji-hero-section { text-align: center; }
 .kanji-hero { max-width: 220px; width: 100%; border-radius: 12px; margin: 1rem auto; display: block; }
