@@ -386,24 +386,44 @@ def build_home(kakikuse_data, available):
     return page(f"{SITE_NAME}｜{SITE_TAGLINE}", SITE_TAGLINE, body, depth=0, rel_path="")
 
 
+OWNER_NAME = "書き方占い師　星詠"
+OWNER_MAIL = "kakikata.uranai@gmail.com"
+
+
 def build_static_pages():
-    about_body = """
+    about_body = f"""
 <article class="static-page">
 <h1>このサイトについて</h1>
 <p>「書き方占い」は、日常で書く漢字の書き方のクセをもとに、恋愛運・金運・性格傾向をエンターテインメントとして紹介するサイトです。</p>
 <p>コンテンツは筆跡心理学（グラフォロジー）的な視点と占星術の要素を組み合わせて構成していますが、科学的な性格診断や運勢を保証するものではありません。娯楽としてお楽しみください。</p>
+
+<h2>運営者情報</h2>
+<dl class="owner-info">
+  <dt>運営者</dt><dd>{html.escape(OWNER_NAME)}</dd>
+  <dt>サイト名</dt><dd>{SITE_NAME}</dd>
+  <dt>連絡先</dt><dd><a href="mailto:{html.escape(OWNER_MAIL, quote=True)}">{html.escape(OWNER_MAIL)}</a></dd>
+  <dt>運営内容</dt><dd>書き方（筆跡）をテーマとした占いコンテンツの制作・公開</dd>
+</dl>
+<p>ご意見・ご指摘、掲載内容に関するお問い合わせは上記のメールアドレスまでご連絡ください。
+順次確認しておりますが、内容によっては返信までお時間をいただく場合があります。</p>
 </article>
 """
-    privacy_body = """
+    privacy_body = f"""
 <article class="static-page">
 <h1>プライバシーポリシー・免責事項</h1>
 <h2>免責事項</h2>
 <p>当サイトのコンテンツは占い・エンターテインメントを目的として提供しています。記載内容の正確性・完全性を保証するものではなく、当サイトの情報を利用したことによって生じたいかなる損害についても、運営者は責任を負いかねます。</p>
 <p>当サイトは医療・心理・法律・投資等の専門的助言を目的としたものではありません。重要な意思決定に際しては、専門家にご相談ください。</p>
 <h2>広告・アフィリエイトについて</h2>
-<p>当サイトは、アフィリエイトプログラムによる収益を得ています。紹介する商品・サービスのリンクには広告が含まれる場合があります。</p>
+<p>当サイトは、A8.netをはじめとするアフィリエイトプログラムに参加しており、紹介する商品・サービスのリンクには広告が含まれます。広告を掲載しているページには、その旨を明示しています。</p>
+<p>これらのリンクを経由して申し込み・購入が行われた場合、当サイトは広告主から成果報酬を受け取ることがあります。商品・サービスの提供は各広告主が行うものであり、当サイトはその内容・品質について責任を負いません。</p>
 <h2>個人情報の取り扱い</h2>
 <p>当サイトはお問い合わせフォーム等を設置しておらず、訪問者から個人情報を直接収集することはありません。アクセス解析のためにアクセスログ等の情報が記録される場合があります。</p>
+<p>広告配信事業者が、利用者の興味に応じた広告を表示するためにCookieを使用する場合があります。Cookieの利用はブラウザの設定により無効にすることができます。</p>
+<h2>著作権について</h2>
+<p>当サイトに掲載している文章・画像等の著作権は運営者に帰属します。無断での転載・複製はご遠慮ください。</p>
+<h2>連絡先</h2>
+<p>{html.escape(OWNER_NAME)}　<a href="mailto:{html.escape(OWNER_MAIL, quote=True)}">{html.escape(OWNER_MAIL)}</a></p>
 </article>
 """
     return about_body, privacy_body
@@ -554,6 +574,20 @@ main {
 .cta-button.cta-secondary { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
 .static-page h1 { font-size: 1.5rem; }
 .static-page h2 { font-size: 1.15rem; margin-top: 1.8rem; }
+.owner-info {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.2rem 1.4rem;
+  margin: 1rem 0;
+}
+.owner-info dt {
+  color: var(--accent);
+  font-size: 0.85rem;
+  margin-top: 0.8rem;
+}
+.owner-info dt:first-child { margin-top: 0; }
+.owner-info dd { margin: 0.2rem 0 0; }
 .site-footer {
   text-align: center;
   padding: 2rem 1rem;
@@ -616,6 +650,14 @@ def main():
 
     # .nojekyll（GitHub Pagesがアンダースコア始まりのファイルを無視しないように）
     open(os.path.join(OUT_DIR, ".nojekyll"), "w").close()
+
+    # static/ の中身はそのままサイト直下へ（Search Consoleの所有権確認ファイル等）
+    static_dir = os.path.join(ROOT, "static")
+    if os.path.isdir(static_dir):
+        for name in os.listdir(static_dir):
+            src = os.path.join(static_dir, name)
+            if os.path.isfile(src):
+                shutil.copy2(src, os.path.join(OUT_DIR, name))
 
     # 記事が存在するパターンだけをサイトに載せる（未生成分は自動的に非表示）
     available = {}
