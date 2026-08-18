@@ -14,6 +14,8 @@ import json
 import os
 import re
 import shutil
+from datetime import datetime
+from urllib.parse import quote
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ARTICLES_DIR = os.path.join(ROOT, "articles")
@@ -23,7 +25,7 @@ OUT_DIR = os.path.join(ROOT, "docs")
 
 SITE_NAME = "書き方占い"
 SITE_TAGLINE = "文字のクセから、隠れた性格と運気を読み解く"
-SITE_URL_FALLBACK = "https://kakikata-uranai.github.io/uranai-site/"
+SITE_URL = "https://kakikata-uranai.github.io/uranai-site/"
 
 NUM_MAP = {"①": "1", "②": "2", "③": "3", "④": "4", "⑤": "5"}
 
@@ -117,9 +119,11 @@ def seiza_cards_html(seiza_block):
 # ==============================
 # 共通レイアウト
 # ==============================
-def page(title, description, body_html, depth=0, og_image=None):
+def page(title, description, body_html, depth=0, og_image=None, rel_path=""):
     base = "../" * depth
-    canonical_img = og_image or f"{base}assets/images/uranai_愛.png"
+    # OGP・canonicalは絶対URLでなければSNSや検索エンジンが解釈できない
+    og_url = SITE_URL + rel_path
+    og_img = SITE_URL + (og_image or "assets/images/og-image.jpg")
     return f"""<!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -127,15 +131,25 @@ def page(title, description, body_html, depth=0, og_image=None):
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{html.escape(title)}</title>
 <meta name="description" content="{html.escape(description)}">
+<link rel="canonical" href="{html.escape(og_url, quote=True)}">
 <meta property="og:title" content="{html.escape(title)}">
 <meta property="og:description" content="{html.escape(description)}">
-<meta property="og:image" content="{canonical_img}">
-<meta property="og:type" content="website">
+<meta property="og:image" content="{html.escape(og_img, quote=True)}">
+<meta property="og:url" content="{html.escape(og_url, quote=True)}">
+<meta property="og:type" content="{'article' if depth == 2 else 'website'}">
+<meta property="og:site_name" content="{SITE_NAME}">
+<meta property="og:locale" content="ja_JP">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" sizes="32x32" href="{base}assets/images/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="{base}assets/images/favicon-180.png">
 <link rel="stylesheet" href="{base}assets/style.css">
 </head>
 <body>
 <header class="site-header">
-  <a href="{base}index.html" class="logo">{SITE_NAME}</a>
+  <a href="{base}index.html" class="logo">
+    <img src="{base}assets/images/logo.jpg" alt="" class="logo-mark" width="44" height="44">
+    <span>{SITE_NAME}</span>
+  </a>
   <p class="tagline">{SITE_TAGLINE}</p>
 </header>
 <main>
@@ -294,7 +308,8 @@ def build_article_page(kanji, meta, pattern_num_idx, pattern_meta, links):
 {affiliate_section}{omikuji_section}
 </article>{impression_tag(affiliate)}{impression_tag(omikuji)}
 """
-    return page(title, description, body, depth=2)
+    return page(title, description, body, depth=2,
+                rel_path=f"{quote(kanji)}/{num_clean}/")
 
 
 def build_kanji_index(kanji, meta, available_patterns):
@@ -335,7 +350,7 @@ def build_kanji_index(kanji, meta, available_patterns):
   {''.join(cards)}
 </section>
 """
-    return page(f"{ktitle}｜{SITE_NAME}", f"{ktitle}でわかる{theme}診断。書き方パターンから深層心理を読み解きます。", body, depth=1)
+    return page(f"{ktitle}｜{SITE_NAME}", f"{ktitle}でわかる{theme}診断。書き方パターンから深層心理を読み解きます。", body, depth=1, rel_path=f"{quote(kanji)}/")
 
 
 def build_home(kakikuse_data, available):
@@ -368,7 +383,7 @@ def build_home(kakikuse_data, available):
   <p>手が紡ぐ文字には、無意識のサインが刻まれていると言われます。書き方占いは、日常で書く漢字のクセから、恋愛傾向や金運、深層心理を読み解く占いコンテンツです。気になる文字をタップして、あなたの書き方をチェックしてみてください。</p>
 </section>
 """
-    return page(f"{SITE_NAME}｜{SITE_TAGLINE}", SITE_TAGLINE, body, depth=0)
+    return page(f"{SITE_NAME}｜{SITE_TAGLINE}", SITE_TAGLINE, body, depth=0, rel_path="")
 
 
 def build_static_pages():
@@ -424,6 +439,14 @@ a { color: var(--accent); }
   text-decoration: none;
   color: var(--text);
   letter-spacing: 0.1em;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.logo-mark {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
 }
 .site-header .tagline {
   color: var(--text-muted);
@@ -542,6 +565,35 @@ main {
 """
 
 
+def write_sitemap(rel_urls):
+    """検索エンジンに全ページを伝える sitemap.xml"""
+    today = datetime.now().strftime("%Y-%m-%d")
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>',
+             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+    for rel in rel_urls:
+        priority = "1.0" if rel == "" else ("0.8" if rel.count("/") <= 1 else "0.6")
+        lines.append("  <url>")
+        lines.append(f"    <loc>{html.escape(SITE_URL + rel)}</loc>")
+        lines.append(f"    <lastmod>{today}</lastmod>")
+        lines.append(f"    <priority>{priority}</priority>")
+        lines.append("  </url>")
+    lines.append("</urlset>")
+    with open(os.path.join(OUT_DIR, "sitemap.xml"), "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+def write_robots():
+    """クロールを許可し、sitemapの場所を伝える"""
+    content = (
+        "User-agent: *\n"
+        "Allow: /\n"
+        "\n"
+        f"Sitemap: {SITE_URL}sitemap.xml\n"
+    )
+    with open(os.path.join(OUT_DIR, "robots.txt"), "w", encoding="utf-8") as f:
+        f.write(content)
+
+
 def main():
     if os.path.exists(OUT_DIR):
         shutil.rmtree(OUT_DIR)
@@ -581,12 +633,13 @@ def main():
 
     about_body, privacy_body = build_static_pages()
     with open(os.path.join(OUT_DIR, "about.html"), "w", encoding="utf-8") as f:
-        f.write(page(f"このサイトについて｜{SITE_NAME}", "書き方占いサイトの運営方針について", about_body, depth=0))
+        f.write(page(f"このサイトについて｜{SITE_NAME}", "書き方占いサイトの運営方針について", about_body, depth=0, rel_path="about.html"))
     with open(os.path.join(OUT_DIR, "privacy.html"), "w", encoding="utf-8") as f:
-        f.write(page(f"プライバシーポリシー・免責事項｜{SITE_NAME}", "プライバシーポリシーおよび免責事項", privacy_body, depth=0))
+        f.write(page(f"プライバシーポリシー・免責事項｜{SITE_NAME}", "プライバシーポリシーおよび免責事項", privacy_body, depth=0, rel_path="privacy.html"))
 
     built = 0
     missing = []
+    urls = ["", "about.html", "privacy.html"]
     for kanji, meta in kakikuse_data.items():
         if not available[kanji]:
             missing.extend(f"note_{kanji}_{NUM_MAP.get(p['num'], str(i+1))}.md"
@@ -596,6 +649,7 @@ def main():
         os.makedirs(kanji_dir, exist_ok=True)
         with open(os.path.join(kanji_dir, "index.html"), "w", encoding="utf-8") as f:
             f.write(build_kanji_index(kanji, meta, available[kanji]))
+        urls.append(f"{quote(kanji)}/")
 
         for idx, pattern in enumerate(meta["patterns"]):
             num_clean = NUM_MAP.get(pattern["num"], str(idx + 1))
@@ -607,9 +661,14 @@ def main():
             os.makedirs(pat_dir, exist_ok=True)
             with open(os.path.join(pat_dir, "index.html"), "w", encoding="utf-8") as f:
                 f.write(html_out)
+            urls.append(f"{quote(kanji)}/{num_clean}/")
             built += 1
 
+    write_sitemap(urls)
+    write_robots()
+
     print(f"ビルド完了: {built}ページ生成 → {OUT_DIR}")
+    print(f"sitemap.xml: {len(urls)}件のURLを登録")
     if missing:
         print(f"未生成のためスキップ（{len(missing)}件）: {', '.join(missing)}")
 
